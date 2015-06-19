@@ -27,6 +27,9 @@ class LogStash::Codecs::JSON < LogStash::Codecs::Base
   # For nxlog users, you may to set this to "CP1252".
   config :charset, :validate => ::Encoding.name_list, :default => "UTF-8"
 
+  # Wrap
+  config :parent, :validate => :string, :default => ""
+
   public
   def register
     @converter = LogStash::Util::Charset.new(@charset)
@@ -37,7 +40,11 @@ class LogStash::Codecs::JSON < LogStash::Codecs::Base
   def decode(data)
     data = @converter.convert(data)
     begin
-      yield LogStash::Event.new(LogStash::Json.load(data))
+      if @parent == ""
+        yield LogStash::Event.new(LogStash::Json.load(data))
+      else
+        yield LogStash::Event.new(LogStash::Json.load("{\"#{@parent}\":" + data + "}"))
+      end
     rescue LogStash::Json::ParserError => e
       @logger.info("JSON parse failure. Falling back to plain-text", :error => e, :data => data)
       yield LogStash::Event.new("message" => data, "tags" => ["_jsonparsefailure"])
