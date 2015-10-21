@@ -52,6 +52,64 @@ describe LogStash::Codecs::JSON do
       end
     end
 
+    describe "scalar values" do
+      shared_examples "given a value" do |value_arg|
+        context "where value is #{value_arg}" do
+          let(:value) { value_arg }
+          let(:event) { LogStash::Event.new(value) }
+          let(:value_json) { LogStash::Json.dump(value)}
+          let(:event) do
+            e = nil
+            subject.decode(value_json) do |decoded|
+              e = decoded
+            end
+            e
+          end
+
+          it "should store the value in 'message'" do
+            expect(event["message"]).to eql(value_json)
+          end
+
+          it "should have the json parse failure tag" do
+            expect(event["tags"]).to include("_jsonparsefailure")
+          end
+        end
+      end
+
+      include_examples "given a value", 123
+      include_examples "given a value", "hello"
+      include_examples "given a value", "-1"
+      include_examples "given a value", " "
+    end
+
+    context "processing JSON with an array root" do
+      let(:data) {
+        [
+          {"foo" => "bar"},
+          {"foo" => "baz"}
+        ]
+      }
+      let(:data_json) {
+        LogStash::Json.dump(data)
+      }
+
+      it "should yield multiple events" do
+        count = 0
+        subject.decode(data_json) do |event|
+          count += 1
+        end
+        expect(count).to eql(data.count)
+      end
+
+      it "should yield the correct objects" do
+        index = 0
+        subject.decode(data_json) do |event|
+          expect(event.to_hash).to include(data[index])
+          index += 1
+        end
+      end
+    end
+
     context "processing weird binary blobs" do
       it "falls back to plain text and doesn't crash (LOGSTASH-1595)" do
         decoded = false

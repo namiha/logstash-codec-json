@@ -4,7 +4,9 @@ require "logstash/util/charset"
 require "logstash/json"
 
 # This codec may be used to decode (via inputs) and encode (via outputs)
-# full JSON messages.  If you are streaming JSON messages delimited
+# full JSON messages. If the data being sent is a JSON array at its root multiple events will be created (one per element).
+#
+# If you are streaming JSON messages delimited
 # by '\n' then see the `json_lines` codec.
 #
 # Encoding will result in a compact JSON representation (no line terminators or indentation)
@@ -41,13 +43,30 @@ class LogStash::Codecs::JSON < LogStash::Codecs::Base
     data = @converter.convert(data)
     begin
       if @parent == ""
-        yield LogStash::Event.new(LogStash::Json.load(data))
+        decoded = LogStash::Json.load(data)
       else
-        yield LogStash::Event.new(LogStash::Json.load("{\"#{@parent}\":" + data + "}"))
+        decoded = LogStash::Json.load("{\"#{@parent}\":" + data + "}"))
       end
+      if decoded.is_a?(Array)
+        decoded.each {|item| yield(LogStash::Event.new(item)) }
+      elsif decoded.is_a?(Hash)
+        yield LogStash::Event.new(decoded)
+      else
+        @logger.info? && @logger.info("JSON codec received a scalar instead of an Arary or Object!", :data => data)
+        yield LogStash::Event.new("message" => data, "tags" => ["_jsonparsefailure"])
+      end
+
     rescue LogStash::Json::ParserError => e
       @logger.info("JSON parse failure. Falling back to plain-text", :error => e, :data => data)
       yield LogStash::Event.new("message" => data, "tags" => ["_jsonparsefailure"])
+    rescue StandardError => e
+      # This should NEVER happen. But hubris has been the cause of many pipeline breaking things
+      # If something bad should happen we just don't want to crash logstash here.
+      @logger.warn("An unexpected error occurred parsing input to JSON",
+                   :input => data,
+                   :message => e.message,
+                   :class => e.class.name,
+                   :backtrace => e.backtrace)
     end
   end # def decode
 
