@@ -45,7 +45,7 @@ class LogStash::Codecs::JSON < LogStash::Codecs::Base
       if @parent == ""
         decoded = LogStash::Json.load(data)
       else
-        decoded = LogStash::Json.load("{\"#{@parent}\":" + data + "}"))
+        decoded = LogStash::Json.load("{\"#{@parent}\":" + data + "}")
       end
       if decoded.is_a?(Array)
         decoded.each {|item| yield(LogStash::Event.new(item)) }
